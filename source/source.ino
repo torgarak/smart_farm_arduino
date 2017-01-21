@@ -23,7 +23,7 @@ float temperature_celcius;
 float light_intensity_lux;
 float soil_moisture_percent;
 
-const float soil_moisture_percent_too_dry_threshold = 20;
+const float soil_moisture_percent_too_dry_threshold = 30;
 
 void setup()
 {
