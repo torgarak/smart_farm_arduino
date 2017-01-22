@@ -24,7 +24,17 @@ float temperature_celcius;
 float light_intensity_lux;
 float soil_moisture_percent;
 
-const float soil_moisture_percent_too_dry_threshold = 25;
+float soil_moisture_percent_too_dry_threshold = 25;
+bool cloud_rule = false;
+bool remote = false;
+volatile bool data_transmission_toggle = false;
+
+// interrupt service routine
+void toggle_transmission_isr()
+{
+  data_transmission_toggle = !data_transmission_toggle;
+  remote = false;
+}
 
 // arduino setup
 void setup()
@@ -43,6 +53,7 @@ void setup()
   lcd.backlight();
 
   // set up thinger.io stuff
+  // outputs
   thinger_instance["temperature_celcius"] >> [](pson& out)// C++11 lambdas
   {
     out = temperature_celcius;
@@ -59,6 +70,34 @@ void setup()
   {
     out = soil_moisture_percent;
   };
+  // inputs
+  thinger_instance["too_dry_threshold"] << [](pson& in)
+  {
+    if(in.is_empty())
+    {
+        in = soil_moisture_percent_too_dry_threshold;
+    }
+    else
+    {
+        soil_moisture_percent_too_dry_threshold = in;
+        cloud_rule = true;
+    } 
+  };
+  thinger_instance["transmission_toggle"] << [](pson& in)
+  {
+    if(in.is_empty())
+    {
+        in = data_transmission_toggle;
+    }
+    else
+    {
+        data_transmission_toggle = in;
+        remote = true;
+    } 
+  };
+  
+  attachInterrupt(digitalPinToInterrupt(7), toggle_transmission_isr, RISING);
+  
 }
 
 // arduino loop
@@ -85,14 +124,26 @@ void loop()
   lcd.setCursor(0,1);
   text = "L: ";
   text += light_intensity_lux;
+  text += " S: ";
+  text += data_transmission_toggle;
+  if (remote)
+  {
+    text += "*";
+  }
   lcd.print(text);
   lcd.setCursor(0,2);
   text = "M: ";
   text += soil_moisture_percent;
+  text += " D: ";
+  text += soil_moisture_percent_too_dry_threshold;
+  if (cloud_rule)
+  {
+    text += "*";
+  }
   lcd.print(text);
   lcd.setCursor(0,3);
   // check soil moisture
-  if (soil_moisture_percent <= soil_moisture_percent_too_dry_threshold)
+  if (soil_moisture_percent < soil_moisture_percent_too_dry_threshold)
   {
     text = "Status: soil too dry";
   }
@@ -103,7 +154,10 @@ void loop()
   lcd.print(text);
 
   // thinger.io stuff
-  thinger_instance.handle();
+  if (!data_transmission_toggle)
+  {
+    thinger_instance.handle();
+  }
   
   // polling interval is 2 seconds
   delay(2000);
